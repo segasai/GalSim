@@ -230,10 +230,7 @@ class Bandpass(object):
 
         # Bandpass * Bandpass -> Bandpass
         if isinstance(other, Bandpass):
-            wave_list = np.union1d(wave_list, other.wave_list)
-            blue_limit = np.max([blue_limit, other.blue_limit])
-            red_limit = np.min([red_limit, other.red_limit])
-            wave_list = wave_list[(wave_list >= blue_limit) & (wave_list <= red_limit)]
+            wave_list, blue_limit, red_limit = utilities.combine_wave_list(self, other)
             tp = lambda w: self(w) * other(w)
             return Bandpass(tp, 'nm', blue_limit=blue_limit, red_limit=red_limit, zeropoint=None,
                             _wave_list=wave_list)

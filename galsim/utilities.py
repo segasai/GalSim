@@ -1070,3 +1070,17 @@ def structure_function(image):
     thetas = np.arange(0., 2*np.pi, 100)  # Average over these angles.
 
     return lambda r: 2*(tab(0.0, 0.0) - np.mean(tab(r*np.cos(thetas), r*np.sin(thetas))))
+
+def combine_wave_list(obj1, obj2):
+    """Combine obj1.wave_list and obj2.wave_list while respecting .blue_limit and .red_limit.
+    """
+    blue_limit = 0.0
+    red_limit = np.inf
+    for obj in [obj1, obj2]:
+        if hasattr(obj, 'blue_limit') and obj.blue_limit is not None:
+            blue_limit = np.max([blue_limit, obj.blue_limit])
+        if hasattr(obj, 'red_limit') and obj.red_limit is not None:
+            red_limit = np.min([red_limit, obj.red_limit])
+    wave_list = np.union1d(obj1.wave_list, obj2.wave_list)
+    wave_list = wave_list[(wave_list >= blue_limit) & (wave_list <= red_limit)]
+    return wave_list, blue_limit, red_limit

@@ -37,7 +37,6 @@ between the scale radii used to specify the size of the GSObject and between the
 Image is acceptable.
 """
 
-import os
 import numpy as np
 
 import galsim
@@ -224,9 +223,13 @@ class GSObject(object):
     @property
     def separable(self): return True
     @property
-    def SED(self): return galsim.SED('1', 'nm', 'flambda')
+    def interpolated(self): return False
+    @property
+    def SED(self): return None
     @property
     def wave_list(self): return np.array([], dtype=float)
+    @property
+    def _norm(self): return self.getFlux()
 
     # Also need this method to duck-type as a ChromaticObject
     def evaluateAtWavelength(self, wave):
@@ -632,7 +635,10 @@ class GSObject(object):
 
         @returns the expanded object.
         """
-        new_obj = galsim.Transform(self, jac=[scale, 0., 0., scale])
+        if hasattr(scale, '__call__'):
+            new_obj = galsim.Transform(self, jac=lambda w:[[scale(w), 0.], [0., scale(w)]])
+        else:
+            new_obj = galsim.Transform(self, jac=[scale, 0., 0., scale])
 
         if hasattr(self,'noise'):
             new_obj.noise = self.noise.expand(scale)
@@ -651,7 +657,10 @@ class GSObject(object):
 
         @returns the dilated object.
         """
-        return self.expand(scale) * (1./scale**2)  # conserve flux
+        if hasattr(scale, '__call__'):
+            return self.expand(scale) * (lambda w: 1./scale(w)**2)  # conserve flux
+        else:
+            return self.expand(scale) * (1./scale**2)  # conserve flux
 
     def magnify(self, mu):
         """Create a version of the current object with a lensing magnification applied to it,

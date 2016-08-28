@@ -249,11 +249,7 @@ class SED(object):
 
         # Product of SED and Bandpass is (filtered) SED.  The `redshift` attribute is retained.
         if isinstance(other, galsim.Bandpass):
-            wave_list = np.union1d(self.wave_list, other.wave_list)
-            blue_limit = np.max([self.blue_limit if self.blue_limit is not None else 0.0,
-                                 other.blue_limit])
-            red_limit = np.min([self.red_limit if self.red_limit is not None else np.inf,
-                                 other.red_limit])
+            wave_list, blue_limit, red_limit = utilities.combine_wave_list(self, other)
             spec = lambda w: self._rest_photons(w) * other(w * (1.0 + self.redshift))
             return SED(spec, 'nm', 'fphotons', redshift=self.redshift,
                        blue_limit=blue_limit, red_limit=red_limit, _wave_list=wave_list)

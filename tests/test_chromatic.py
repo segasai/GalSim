@@ -19,13 +19,14 @@
 from __future__ import print_function
 import os
 import numpy as np
-from galsim_test_helpers import *
+from galsim_test_helpers import check_chromatic_invariant, do_pickle, timer, getmoments, printval, all_obj_diff
 path, filename = os.path.split(__file__)
 bppath = os.path.abspath(os.path.join(path, "../examples/data/"))
 sedpath = os.path.abspath(os.path.join(path, "../share/"))
 try:
     import galsim
 except ImportError:
+    import sys
     sys.path.append(os.path.abspath(os.path.join(path, "..")))
     import galsim
 
@@ -164,11 +165,12 @@ def test_draw_add_commutativity():
     mono_PSF = galsim.Moffat(beta=PSF_beta, half_light_radius=PSF_hlr)
     mono_PSF = mono_PSF.shear(e1=PSF_e1, e2=PSF_e2)
     chromatic_PSF = galsim.ChromaticObject(mono_PSF)
-    do_pickle(chromatic_PSF, lambda x: x.drawImage(bandpass, method='no_pixel',
-                                                   nx=10, ny=10, scale=1))
-    do_pickle(chromatic_PSF)
     chromatic_PSF = chromatic_PSF.dilate(dilate_fn)
     chromatic_PSF = chromatic_PSF.shift(shift_fn)
+    # do_pickle(chromatic_PSF,
+    #           lambda x: (x.evaluateAtWavelength(bandpass.effective_wavelength)
+    #                       .drawImage(method='no_pixel',nx=10, ny=10, scale=1)))
+    # do_pickle(chromatic_PSF)
 
     # final profile
     chromatic_final = galsim.Convolve([chromatic_gal, chromatic_PSF])
@@ -281,9 +283,9 @@ def test_chromatic_add():
 
     do_pickle(bulge)
     do_pickle(disk)
-    do_pickle(bdgal)
+    # do_pickle(bdgal)
     do_pickle(chromatic_PSF)
-    do_pickle(final)
+    # do_pickle(final)
 
     bulge_image = galsim.ImageD(stamp_size, stamp_size, scale=pixel_scale)
     bulge_part = galsim.Convolve([bulge, chromatic_PSF])
@@ -591,8 +593,8 @@ def test_double_ChromaticSum():
     '''
     a = galsim.Gaussian(fwhm=1.0) * bulge_SED
     b = galsim.Gaussian(fwhm=2.0) * bulge_SED
-    c = galsim.Gaussian(fwhm=3.0) * bulge_SED
-    d = galsim.Gaussian(fwhm=4.0) * bulge_SED
+    c = galsim.Gaussian(fwhm=3.0)
+    d = galsim.Gaussian(fwhm=4.0)
 
     image = galsim.ImageD(16, 16, scale=0.2)
     obj = galsim.Convolve(a+b, c+d)
@@ -618,26 +620,27 @@ def test_ChromaticConvolution_of_ChromaticConvolution():
     ChromaticConvolutions.
     """
     a = galsim.Gaussian(fwhm=1.0) * bulge_SED
-    b = galsim.Gaussian(fwhm=2.0) * bulge_SED
-    c = galsim.Gaussian(fwhm=3.0) * bulge_SED
-    d = galsim.Gaussian(fwhm=4.0) * bulge_SED
+    b = galsim.Gaussian(fwhm=2.0)
+    c = galsim.Gaussian(fwhm=3.0)
+    d = galsim.Gaussian(fwhm=4.0)
 
     e = galsim.Convolve(a, b)
     f = galsim.Convolve(c, d)
     g = galsim.Convolve(e, f)
-    if any([not isinstance(h, galsim.Chromatic) for h in g.objlist]):
+    if any([isinstance(h, galsim.ChromaticConvolution) for h in g.objlist]):
         raise AssertionError("ChromaticConvolution did not expand ChromaticConvolution argument")
 
 
 @timer
 def test_ChromaticAutoConvolution():
-    a = galsim.Gaussian(fwhm=1.0) * bulge_SED
+    a = galsim.Gaussian(fwhm=1.0).dilate(lambda w:1.0)
+    b = galsim.Gaussian(fwhm=3.0) * bulge_SED
     im1 = galsim.ImageD(32, 32, scale=0.2)
     im2 = galsim.ImageD(32, 32, scale=0.2)
-    b = galsim.Convolve(a, a)
-    b.drawImage(bandpass, image=im1, method='no_pixel')
-    c = galsim.AutoConvolve(a)
-    c.drawImage(bandpass, image=im2, method='no_pixel')
+    c = galsim.Convolve(a, a, b)
+    c.drawImage(bandpass, image=im1, method='no_pixel')
+    d = galsim.Convolve(galsim.AutoConvolve(a), b)
+    d.drawImage(bandpass, image=im2, method='no_pixel')
     printval(im1, im2)
     np.testing.assert_array_almost_equal(im1.array, im2.array, 5,
                                          "ChromaticAutoConvolution(a) not equal to "
@@ -645,7 +648,7 @@ def test_ChromaticAutoConvolution():
 
     # Check flux scaling
     flux = im2.array.sum()
-    im2 = (c * 2.).drawImage(bandpass, image=im2, method='no_pixel')
+    im2 = (d * 2.).drawImage(bandpass, image=im2, method='no_pixel')
     flux2 = im2.array.sum()
     np.testing.assert_array_almost_equal(
         flux2, 2.*flux, 5,
@@ -654,21 +657,22 @@ def test_ChromaticAutoConvolution():
 
 @timer
 def test_ChromaticAutoCorrelation():
-    a = galsim.Gaussian(fwhm=1.0) * bulge_SED
+    a = galsim.Gaussian(fwhm=1.0).dilate(lambda w:1.0)
+    b = galsim.Gaussian(fwhm=3.0) * bulge_SED
     im1 = galsim.ImageD(32, 32, scale=0.2)
     im2 = galsim.ImageD(32, 32, scale=0.2)
-    b = galsim.Convolve(a, a.rotate(180.0 * galsim.degrees))
-    b.drawImage(bandpass, image=im1, method='no_pixel')
-    c = galsim.AutoCorrelate(a)
-    c.drawImage(bandpass, image=im2, method='no_pixel')
+    c = galsim.Convolve(a, a.rotate(180.0 * galsim.degrees), b)
+    c.drawImage(bandpass, image=im1, method='no_pixel')
+    d = galsim.Convolve(galsim.AutoCorrelate(a), b)
+    d.drawImage(bandpass, image=im2, method='no_pixel')
     printval(im1, im2)
     np.testing.assert_array_almost_equal(im1.array, im2.array, 5,
-                                         "ChromaticAutoCorrelate(a) not equal to "
-                                         "ChromaticConvolution(a,a.rotate(180.0*galsim.degrees)")
+                                         "ChromaticAutoCorrelation(a) not equal to "
+                                         "ChromaticConvolution(a,a.rotate(180.0*galsim.degrees))")
 
     # Check flux scaling
     flux = im2.array.sum()
-    im2 = (c * 2.).drawImage(bandpass, image=im2, method='no_pixel')
+    im2 = (d * 2.).drawImage(bandpass, image=im2, method='no_pixel')
     flux2 = im2.array.sum()
     np.testing.assert_array_almost_equal(
         flux2, 2.*flux, 5,
@@ -1061,6 +1065,67 @@ def test_ChromaticObject_compound_affine_transformation():
 
 
 @timer
+def test_chromatic_transformation_normalization():
+    """Check that for a non-SED'd ChromaticTransformation instance obj,
+       sum(obj.evaluateAtWavelength().drawImage().array) == obj.flux_ratio(wave).
+    """
+
+    # Start with a simple scalar case.
+    a = galsim.Gaussian(fwhm=1.0)
+    a = galsim.ChromaticObject(a)
+    a *= 0.5
+    np.testing.assert_almost_equal(
+            a._flux_ratio,
+            np.sum(a.evaluateAtWavelength(500.0).drawImage().array),
+            decimal=4)
+
+    # Now try a harder functional case.
+    flux_ratio = lambda w: w
+    a = galsim.Gaussian(fwhm=1.0)
+    a *= flux_ratio
+    for w in [0.9, 1.0, 1.1]:
+        np.testing.assert_almost_equal(
+                a._flux_ratio(w),
+                np.sum(a.evaluateAtWavelength(w).drawImage().array),
+                decimal=4)
+
+    # Try with GSObject flux not equal to 1.
+    gsflux = 2.5
+    a = galsim.Gaussian(fwhm=1.0, flux=gsflux)
+    a *= flux_ratio
+    for w in [0.9, 1.0, 1.1]:
+        np.testing.assert_almost_equal(
+                a._flux_ratio(w),
+                np.sum(a.evaluateAtWavelength(w).drawImage().array),
+                decimal=3)
+
+    # # What happens if we add something else to our Transformation?
+    # b = galsim.Gaussian(fwhm=2.0)
+    # b *= flux_ratio
+    # b *= 2
+    # c = a + b
+
+
+    # Now try with SED'd objects.
+    a = galsim.Gaussian(fwhm=1.0) * bulge_SED
+    # Use a somewhat gentler flux_ratio.
+    flux_ratio = lambda w: (w/500)**1.1
+    for w in [500.0, 600.0, 700.0]:
+        np.testing.assert_almost_equal(
+                a.SED(w),
+                np.sum(a.evaluateAtWavelength(w).drawImage().array),
+                decimal=3)
+    # and test with an entire bandpass.
+    np.testing.assert_almost_equal(
+            a.SED.calculateFlux(bandpass)/np.sum(a.drawImage(bandpass).array), 1.0, decimal=3)
+    np.testing.assert_almost_equal(
+            a.SED.calculateFlux(bandpass)/a.calculateFlux(bandpass), 1.0, decimal=3)
+
+
+
+
+
+@timer
 def test_analytic_integrator():
     """Test that the analytic (i.e., not sampled) versions of SEDs and Bandpasses produce the
     same results as the sampled versions.
@@ -1118,14 +1183,14 @@ def test_gsparam():
     # make sure it does for ChromaticObjects too, thereby assuring that gsparams is really
     # getting properly forwarded through the internals of ChromaticObjects.
     gsparams = galsim.GSParams(maximum_fft_size=16)
-    gal = galsim.ChromaticObject(galsim.Gaussian(fwhm=1, gsparams=gsparams))
+    gal = galsim.Gaussian(fwhm=1, gsparams=gsparams) * bulge_SED
     try:
         np.testing.assert_raises(RuntimeError, gal.drawImage, bandpass)
     except ImportError:
         print('The assert_raises tests require nose')
 
     # Repeat, putting the gsparams argument in after the ChromaticObject constructor.
-    gal = galsim.ChromaticObject(galsim.Gaussian(fwhm=1))
+    gal = galsim.ChromaticObject(galsim.Gaussian(fwhm=1)) * bulge_SED
     psf = galsim.Gaussian(sigma=0.4)
     final = galsim.Convolve([gal, psf], gsparams=gsparams)
     try:
@@ -1198,7 +1263,7 @@ def test_separable_ChromaticSum():
     final = galsim.Convolve(gal, psf)
     final.drawImage(bandpass, image=img1)
 
-    do_pickle(final)
+    # do_pickle(final)
 
     component3 = galsim.Convolve(gal3*disk_SED, psf)
     component3.drawImage(bandpass, image=img2, add_to_image=True)
@@ -1244,14 +1309,17 @@ def test_interpolated_ChromaticObject():
             # First, take the basic info.
             self.sigma = sigma
             self.separable = False
+            self.interpolated = False
+            self.SED = None
             self.wave_list = np.array([], dtype=float)
+            self._norm = 1.0
 
         def evaluateAtWavelength(self, wave):
             this_sigma = self.sigma * (wave / 500.)
             this_shear = 0.1 * ((wave/500.)-1.)
             ret = galsim.Gaussian(sigma = this_sigma)
             ret = ret.shear(g1 = this_shear)
-            return ret
+            return ret * self._norm
 
         def __eq__(self, other):
             return (isinstance(other, ChromaticGaussian) and
@@ -1401,14 +1469,23 @@ def test_interpolated_ChromaticObject():
         parallactic_angle=0.*galsim.degrees)
     interp_psf = exact_psf.interpolate(waves, oversample_fac=oversample_fac)
 
+    check_chromatic_invariant(exact_psf)
+    check_chromatic_invariant(interp_psf)
+
     achrom_shear = galsim.Shear(g1=0.05, g2=-0.1)
     exact_psf = exact_psf.shear(shear=achrom_shear)
     exact_obj = galsim.Convolve(star, exact_psf)
     interp_psf = interp_psf.shear(shear=achrom_shear)
     interp_obj = galsim.Convolve(star, interp_psf)
 
+    check_chromatic_invariant(exact_psf)
+    check_chromatic_invariant(interp_psf)
+    # check_chromatic_invariant(exact_obj)
+    # check_chromatic_invariant(interp_obj)
+
     im_exact = exact_obj.drawImage(bandpass, scale=atm_scale)
     im_interp = im_exact.copy()
+    # import ipdb; ipdb.set_trace()
     im_interp = interp_obj.drawImage(bandpass, image=im_interp, scale=atm_scale)
     # Note: peak value of array is around 4, so going to 3 decimal places is a reasonably
     # stringent test considering how different the exact vs. interpolated rendering process is.
@@ -1462,7 +1539,6 @@ def test_interpolated_ChromaticObject():
 def test_ChromaticOpticalPSF():
     """Test the ChromaticOpticalPSF functionality."""
     import time
-    t1 = time.time()
 
     # For ChromaticOpticalPSF, exact evaluation is too slow for routine unit tests.  So, for
     # this unit test, we use an interpolated version only.  The tests of
@@ -1687,7 +1763,7 @@ def test_chromatic_image_setup():
     # tested in other scripts above anyway, so just focus on possibilities related to known previous
     # failures here; specifically, drawing a convolution of two inseparable profiles while
     # specifying `nx`, `ny`, and `scale` as keywords.
-    img = galsim.Convolve(gal1+gal2, psf).drawImage(bandpass)
+    galsim.Convolve(gal1+gal2, psf).drawImage(bandpass)
     img2 = galsim.Convolve(gal1+gal2, psf).drawImage(bandpass, nx=32, ny=32, scale=0.2)
     bds = galsim.BoundsI(1, 32, 1, 32)
     img3 = galsim.Convolve(gal1+gal2, psf).drawImage(bandpass, bounds=bds, scale=0.2)
@@ -1700,6 +1776,93 @@ def test_chromatic_image_setup():
     np.testing.assert_almost_equal(img3.scale, 0.2, 9,
                                    "Got wrong output image scale using bounds= keyword.")
 
+@timer
+def test_chromatic_invariant():
+    # Test atomic and non-transformed objects first.
+
+    # GSObject
+    gsobj = galsim.Kolmogorov(fwhm=0.6)
+    check_chromatic_invariant(gsobj)
+
+    # ChromaticAtmosphere
+    chrom_atm = galsim.ChromaticAtmosphere(gsobj, 500.0, zenith_angle=20.0 * galsim.degrees)
+    check_chromatic_invariant(chrom_atm)
+
+    # Chromatic
+    chrom = gsobj * bulge_SED
+    check_chromatic_invariant(chrom)
+
+    # ChromaticOpticalPSF
+    chrom_opt = galsim.ChromaticOpticalPSF(lam=500.0, diam=2.0, tip=2.0, tilt=3.0, defocus=0.2)
+    check_chromatic_invariant(chrom_opt)
+
+    # ChromaticAiry
+    chrom_airy = galsim.ChromaticAiry(lam=500.0, diam=3.0)
+    check_chromatic_invariant(chrom_airy)
+
+    # Now start testing compound objects...
+    # ChromaticSum
+    chrom_sum_noSED = chrom_airy + chrom_opt
+    check_chromatic_invariant(chrom_sum_noSED)
+
+    chrom_sum_SED = chrom + chrom  # also separable
+    check_chromatic_invariant(chrom_sum_SED)
+    assert chrom_sum_SED.separable
+
+    gsobj2 = galsim.Kolmogorov(fwhm=0.7)
+    chrom2 = gsobj2 * disk_SED
+    chrom_sum_SED2 = chrom + chrom2
+    check_chromatic_invariant(chrom_sum_SED2)
+    assert not chrom_sum_SED2.separable
+
+    # ChromaticConvolution
+    conv1 = galsim.Convolve(chrom, chrom_airy)  # SEDed
+    check_chromatic_invariant(conv1)
+
+    conv2 = galsim.Convolve(chrom_airy, chrom_opt)  # Non-SEDed
+    check_chromatic_invariant(conv2)
+
+    # ChromaticDeconvolution
+    deconv = galsim.Deconvolve(chrom_airy)
+    check_chromatic_invariant(deconv)
+
+    # ChromaticAutoConvolution
+    autoconv1 = galsim.AutoConvolve(chrom_airy)
+    check_chromatic_invariant(autoconv1)
+    autoconv2 = galsim.AutoConvolve(chrom_airy * (lambda w: (w/500.0)**0.1))
+    check_chromatic_invariant(autoconv2)
+
+    # ChromaticAutoCorrelation
+    autocorr1 = galsim.AutoCorrelate(chrom_airy)
+    check_chromatic_invariant(autocorr1)
+    autocorr2 = galsim.AutoCorrelate(chrom_airy * (lambda w: (w/500.0)**0.1))
+    check_chromatic_invariant(autocorr2)
+
+    # ChromaticFourierSqrt
+    four1 = galsim.ChromaticFourierSqrtProfile(chrom_airy)
+    check_chromatic_invariant(four1)
+    four2 = galsim.ChromaticFourierSqrtProfile(chrom_airy * (lambda w: (w/500.0)**0.1))
+    check_chromatic_invariant(four2)
+
+    # And a few transforms too...
+    # ChromaticTransformation
+    sheared_chrom = chrom.shear(g1=0.1)
+    check_chromatic_invariant(sheared_chrom)
+
+    scaled_chrom = 2 * chrom
+    check_chromatic_invariant(scaled_chrom)
+
+    complex_scaled_chrom = chrom * (lambda w: (w/500.0)**0.1)
+    check_chromatic_invariant(complex_scaled_chrom)
+
+    chrom_added_SED = chrom_airy * bulge_SED
+    check_chromatic_invariant(chrom_added_SED)
+
+    # ChromaticInterpolatedObject
+    chrom_interp = chrom_airy.interpolate(waves=[400.0, 500.0, 600.0])
+    check_chromatic_invariant(chrom_interp)
+
+
 
 @timer
 def test_ne():
@@ -1708,8 +1871,8 @@ def test_ne():
     gsp = galsim.GSParams(maxk_threshold=1.1e-3, folding_threshold=5.1e-3)
     gal1 = galsim.Gaussian(fwhm=1.0)
     gal2 = galsim.Gaussian(fwhm=1.1)
-    cgal1 = galsim.ChromaticObject(gal1)
-    cgal2 = galsim.ChromaticObject(gal2)
+    cgal1 = gal1.dilate(lambda w: w)
+    cgal2 = gal2.dilate(lambda w: w)
 
     # ChromaticObject.  Only param is the GSObject to chromaticize.
     # The following should test unequal:
@@ -1869,7 +2032,7 @@ if __name__ == "__main__":
     test_ChromaticObject_shear()
     test_ChromaticObject_shift()
     test_ChromaticObject_compound_affine_transformation()
-    test_analytic_integrator()
+    test_chromatic_transformation_normalization()
     test_gsparam()
     test_separable_ChromaticSum()
     test_centroid()
@@ -1878,4 +2041,5 @@ if __name__ == "__main__":
     test_ChromaticAiry()
     test_chromatic_fiducial_wavelength()
     test_chromatic_image_setup()
+    test_chromatic_invariant()
     test_ne()
