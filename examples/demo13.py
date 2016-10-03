@@ -334,7 +334,7 @@ def main(argv):
         # that makeSkyImage() takes a bit of time.  If you do not care about the variable pixel
         # scale, you could simply compute an approximate sky level in e-/pix by multiplying
         # sky_level by wfirst.pixel_scale**2, and add that to final_image.
-        sky_image = final_image.copy()
+        sky_image = final_image
         wcs.makeSkyImage(sky_image, sky_level)
         # This image is in units of e-/pix.  Finally we add the expected thermal backgrounds in this
         # band.  These are provided in e-/pix/s, so we have to multiply by the exposure time.
@@ -364,7 +364,7 @@ def main(argv):
 
         if diff_mode:
             # Save the image before applying the transformation to see the difference
-            save_image = final_image.copy()
+            save_image = final_image
 
         # If we had wanted to, we could have specified a different exposure time than the default
         # one for WFIRST, but otherwise the following routine does not take any arguments.
@@ -409,7 +409,7 @@ def main(argv):
 
         # Save the image before applying the transformation to see the difference:
         if diff_mode:
-            save_image = final_image.copy()
+            save_image = final_image
 
         # Apply the WFIRST nonlinearity routine, which knows all about the nonlinearity expected in
         # the WFIRST detectors.
@@ -430,7 +430,7 @@ def main(argv):
             diff.write(out_filename)
 
             # Save this image to do the diff after applying IPC.
-            save_image = final_image.copy()
+            save_image = final_image
 
         # 4) Including Interpixel capacitance:
         # The voltage read at a given pixel location is influenced by the charges present in the
