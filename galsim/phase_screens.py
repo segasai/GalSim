@@ -165,7 +165,8 @@ class AtmosphericScreen(object):
         """
         fx = np.fft.fftfreq(self.npix, self.screen_scale)
         fx, fy = np.meshgrid(fx, fx)
-        f2 = fx*fx + fy*fy
+        ksq = (fx*fx + fy*fy)*(2*np.pi)**2
+        print(np.sqrt(np.max(ksq)))
 
         L0_inv = 1./self.L0 if self.L0 is not None else 0.0
         old_settings = np.seterr(all='ignore')
@@ -173,9 +174,9 @@ class AtmosphericScreen(object):
                      (fx*fx + fy*fy + L0_inv*L0_inv)**(-11.0/12.0) *
                      self.npix * np.sqrt(np.sqrt(2.0)))
         if self.kmax is not None:
-            self._psi[f2 > self.maxk**2] = 0.0
+            self._psi[ksq > self.kmax**2] = 0.0
         if self.kmin is not None:
-            self._psi[f2 < self.mink**2] = 0.0
+            self._psi[ksq < self.kmin**2] = 0.0
         np.seterr(**old_settings)
         self._psi *= 500.0  # Multiply by 500 here so we can divide by arbitrary lam later.
         self._psi[0, 0] = 0.0

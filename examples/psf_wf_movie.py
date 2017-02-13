@@ -94,7 +94,8 @@ def make_movie(args):
 
     # Additionally, we set the screen size and scale.
     atm = galsim.Atmosphere(r0_500=r0_500, speed=spd, direction=dirn, altitude=alts, rng=rng,
-                            screen_size=args.screen_size, screen_scale=args.screen_scale)
+                            screen_size=args.screen_size, screen_scale=args.screen_scale,
+                            kmin=args.kmin, kmax=args.kmax)
     # `atm` is now an instance of a galsim.PhaseScreenList object.
 
     # Place to store the cumulative PSF image if args.accumulate is set.
@@ -234,6 +235,10 @@ phase screens.  Note that the ffmpeg command line tool is required to run this s
                         help="x-coordinate of PSF in arcmin.  Default: 0.0")
     parser.add_argument("-y", "--y", type=float, default=0.0,
                         help="y-coordinate of PSF in arcmin.  Default: 0.0")
+    parser.add_argument("--kmin", type=float, default=0.0,
+                        help="Minimum wave number to use in phase screen.  Default: 0 m^-1")
+    parser.add_argument("--kmax", type=float, default=np.inf,
+                        help="Maximum wave number to use in phase screen.  Default: np.inf m^-1")
 
     parser.add_argument("--lam", type=float, default=700.0,
                         help="Wavelength in nanometers.  Default: 700.0")

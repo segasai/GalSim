@@ -96,7 +96,8 @@ def make_movie(args):
               .format(alts[i], spd[i]*dirn[i].cos(), spd[i]*dirn[i].sin(), r0_500[i]))
     if args.nlayers > 0:
         atm = galsim.Atmosphere(r0_500=r0_500, speed=spd, direction=dirn, altitude=alts, rng=rng,
-                                screen_size=args.screen_size, screen_scale=args.screen_scale)
+                                screen_size=args.screen_size, screen_scale=args.screen_scale,
+                                kmin=args.kmin, kmax=args.kmax)
     else:
         atm = galsim.PhaseScreenList()
 
@@ -362,6 +363,10 @@ Atmosphere only simulation:
                         help="Resolution of atmospheric screen in meters.  Default: 0.1")
     parser.add_argument("--max_speed", type=float, default=20.0,
                         help="Maximum wind speed in m/s.  Default: 20.0")
+    parser.add_argument("--kmin", type=float, default=0.0,
+                        help="Minimum wave number to use in phase screen.  Default: 0 m^-1")
+    parser.add_argument("--kmax", type=float, default=np.inf,
+                        help="Maximum wave number to use in phase screen.  Default: np.inf m^-1")
 
     parser.add_argument("--lam", type=float, default=700.0,
                         help="Wavelength in nanometers.  Default: 700.0")
