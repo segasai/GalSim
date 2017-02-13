@@ -73,7 +73,8 @@ class AtmosphericScreen(object):
     September 2014
     """
     def __init__(self, screen_size, screen_scale=None, altitude=0.0, r0_500=0.2, L0=25.0,
-                 vx=0.0, vy=0.0, alpha=1.0, time_step=None, rng=None):
+                 vx=0.0, vy=0.0, alpha=1.0, time_step=None, rng=None,
+                 kmax=None, kmin=None):
 
         if (alpha != 1.0 and time_step is None):
             raise ValueError("No time_step provided when alpha != 1.0")
@@ -96,6 +97,8 @@ class AtmosphericScreen(object):
         self.vy = vy
         self.alpha = alpha
         self._time = 0.0
+        self.kmax = kmax
+        self.kmin = kmin
 
         if rng is None:
             rng = galsim.BaseDeviate()
@@ -162,12 +165,17 @@ class AtmosphericScreen(object):
         """
         fx = np.fft.fftfreq(self.npix, self.screen_scale)
         fx, fy = np.meshgrid(fx, fx)
+        f2 = fx*fx + fy*fy
 
         L0_inv = 1./self.L0 if self.L0 is not None else 0.0
         old_settings = np.seterr(all='ignore')
         self._psi = (1./self.screen_size*self._kolmogorov_constant*(self.r0_500**(-5.0/6.0)) *
                      (fx*fx + fy*fy + L0_inv*L0_inv)**(-11.0/12.0) *
                      self.npix * np.sqrt(np.sqrt(2.0)))
+        if self.kmax is not None:
+            self._psi[f2 > self.maxk**2] = 0.0
+        if self.kmin is not None:
+            self._psi[f2 < self.mink**2] = 0.0
         np.seterr(**old_settings)
         self._psi *= 500.0  # Multiply by 500 here so we can divide by arbitrary lam later.
         self._psi[0, 0] = 0.0
