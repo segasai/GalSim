@@ -113,6 +113,8 @@ def make_movie(args):
                            screen_list=atm, pad_factor=args.pad_factor,
                            oversampling=args.oversampling)
 
+    airy = galsim.Airy(diam=args.diam, lam=args.lam, obscuration=args.obscuration)
+
     # Code to setup the Matplotlib animation.
     metadata = dict(title='Wavefront Movie', artist='Matplotlib')
     writer = anim.FFMpegWriter(fps=15, bitrate=5000, metadata=metadata)
@@ -178,8 +180,14 @@ def make_movie(args):
                 psf = atm.makePSF(lam=args.lam, theta=theta, aper=aper,
                                   t0=t0, exptime=args.time_step)
                 # `psf` is now just like an any other GSObject, ready to be convolved, drawn, or
-                # transformed.  Here, we just draw it into an image to add to our movie.
-                psf_img0 = psf.drawImage(nx=args.psf_nx, ny=args.psf_nx, scale=args.psf_scale)
+                # transformed.  Here, we just draw it into an image to add to our movie.  Unless
+                # args.Airy is set, in which case we convolve in an Airy GSObject.
+                if args.airy:
+                    profile = galsim.Convolve(psf, airy)
+                    psf_img0 = profile.drawImage(nx=args.psf_nx, ny=args.psf_nx,
+                                                 scale=args.psf_scale)
+                else:
+                    psf_img0 = psf.drawImage(nx=args.psf_nx, ny=args.psf_nx, scale=args.psf_scale)
 
                 if args.accumulate:
                     psf_img_sum += psf_img0
@@ -252,6 +260,7 @@ phase screens.  Note that the ffmpeg command line tool is required to run this s
                         help="Thickness of struts as fraction of aperture diameter.  Default: 0.05")
     parser.add_argument("--strut_angle", type=float, default=0.0,
                         help="Starting angle of first strut in degrees.  Default: 0.0")
+    parser.add_argument("--airy", action='store_true', help="Convolve by 2nd kick Airy?")
 
     parser.add_argument("--psf_nx", type=int, default=512,
                         help="Output PSF image dimensions in pixels.  Default: 512")

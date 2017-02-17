@@ -110,6 +110,7 @@ def make_movie(args):
                                 pad_factor=args.geom_oversampling, oversampling=0.5,
                                 nstruts=args.nstruts, strut_thick=args.strut_thick,
                                 strut_angle=args.strut_angle*galsim.degrees)
+    airy = galsim.Airy(diam=args.diam, lam=args.lam, obscuration=args.obscuration)
 
     scale = args.size/args.nx
     extent = np.r_[-1,1,-1,1]*args.size/2
@@ -185,8 +186,13 @@ def make_movie(args):
 
                 fft_img0 = fft_psf.drawImage(nx=args.nx, ny=args.nx, scale=scale)
 
-                geom_img0 = geom_psf.drawImage(nx=args.nx, ny=args.nx, scale=scale,
-                                               method='phot', n_photons=100000)
+                if args.airy:
+                    profile = galsim.Convolve(geom_psf, airy)
+                    geom_img0 = profile.drawImage(nx=args.nx, ny=args.nx, scale=scale,
+                                                  method='phot', n_photons=100000)
+                else:
+                    geom_img0 = geom_psf.drawImage(nx=args.nx, ny=args.nx, scale=scale,
+                                                   method='phot', n_photons=100000)
 
                 t0 += args.time_step
 
@@ -380,6 +386,7 @@ Atmosphere only simulation:
                         help="Thickness of struts as fraction of aperture diameter.  Default: 0.05")
     parser.add_argument("--strut_angle", type=float, default=0.0,
                         help="Starting angle of first strut in degrees.  Default: 0.0")
+    parser.add_argument("--airy", action='store_true', help="Convolve by 2nd kick Airy?")
 
     parser.add_argument("--nx", type=int, default=256,
                         help="Output PSF image dimensions in pixels.  Default: 256")
