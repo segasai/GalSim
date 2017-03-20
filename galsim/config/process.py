@@ -20,7 +20,7 @@ import os
 import galsim
 import logging
 import copy
-
+import traceback
 
 # Python 2.6 doesn't include OrderedDict natively.  There is a package ordereddict that you
 # can pip install.  But if the user hasn't done that, we'll just read into a regular dict.
@@ -796,7 +796,6 @@ def MultiProcess(nproc, config, job_func, tasks, item, logger=None,
             except KeyboardInterrupt:
                 raise
             except Exception as e:
-                import traceback
                 tr = traceback.format_exc()
                 logger.debug('%s: Caught exception: %s\n%s',proc,str(e),tr)
                 results_queue.put( (e, k, tr, proc) )
@@ -840,62 +839,77 @@ def MultiProcess(nproc, config, job_func, tasks, item, logger=None,
         # processes can emit logging information safely.
         logger_proxy = GetLoggerProxy(logger)
 
-        # Run the tasks.
-        # Each Process command starts up a parallel process that will keep checking the queue
-        # for a new task. If there is one there, it grabs it and does it. If not, it waits
-        # until there is one to grab. When it finds a 'STOP', it shuts down.
-        results_queue = Queue()
-        p_list = []
-        for j in range(nproc):
-            # The process name is actually the default name that Process would generate on its
-            # own for the first time we do this. But after that, if we start another round of
-            # multiprocessing, then it just keeps incrementing the numbers, rather than starting
-            # over at Process-1.  As far as I can tell, it's not actually spawning more
-            # processes, so for the sake of the logging output, we name the processes explicitly.
-            p = Process(target=worker, args=(task_queue, results_queue, config, logger_proxy),
-                        name='Process-%d'%(j+1))
-            p.start()
-            p_list.append(p)
+        try:
+            # Run the tasks.
+            # Each Process command starts up a parallel process that will keep checking the queue
+            # for a new task. If there is one there, it grabs it and does it. If not, it waits
+            # until there is one to grab. When it finds a 'STOP', it shuts down.
+            results_queue = Queue()
+            p_list = []
+            for j in range(nproc):
+                # The process name is actually the default name that Process would generate on its
+                # own for the first time we do this. But after that, if we start another round of
+                # multiprocessing, then it just keeps incrementing the numbers, rather than
+                # starting over at Process-1.  As far as I can tell, it's not actually spawning
+                # more processes, so for the sake of the logging output, we name the processes
+                # explicitly.
+                p = Process(target=worker, args=(task_queue, results_queue, config, logger_proxy),
+                            name='Process-%d'%(j+1))
+                p.start()
+                p_list.append(p)
 
-        # In the meanwhile, the main process keeps going.  We pull each set of images off of the
-        # results_queue and put them in the appropriate place in the lists.
-        # This loop is happening while the other processes are still working on their tasks.
-        results = [ None for k in range(njobs) ]
-        for kk in range(njobs):
-            res, k, t, proc = results_queue.get()
-            if isinstance(res,Exception):
-                # res is really the exception, e
-                # t is really the traceback
-                # k is the index for the job that failed
-                if except_func is not None:  # pragma: no branch
-                    except_func(logger, proc, k, res, t)
-                if except_abort or isinstance(res,KeyboardInterrupt):
-                    for j in range(nproc):
-                        p_list[j].terminate()
-                    del config['current_nproc']
-                    raise res
-            else:
-                # The normal case
-                if done_func is not None:  # pragma: no branch
-                    done_func(logger, proc, k, res, t)
-                results[k] = res
+            # In the meanwhile, the main process keeps going.  We pull each set of images off of
+            # the results_queue and put them in the appropriate place in the lists.
+            # This loop is happening while the other processes are still working on their tasks.
+            results = [ None for k in range(njobs) ]
+            for kk in range(njobs):
+                res, k, t, proc = results_queue.get()
+                if isinstance(res,Exception):
+                    # res is really the exception, e
+                    # t is really the traceback
+                    # k is the index for the job that failed
+                    if except_func is not None:  # pragma: no branch
+                        except_func(logger, proc, k, res, t)
+                    if except_abort or isinstance(res,KeyboardInterrupt):
+                        for j in range(nproc):
+                            p_list[j].terminate()
+                        del config['current_nproc']
+                        raise res
+                else:
+                    # The normal case
+                    if done_func is not None:  # pragma: no branch
+                        done_func(logger, proc, k, res, t)
+                    results[k] = res
+        except Exception as e: # pragma: no cover
+            logger.error("Caught a fatal exception during multiprocessing:\n%r",e)
+            logger.error("%s",traceback.format_exc())
+            # Clear any unclaimed jobs that are still in the queue
+            while not task_queue.empty():
+                task_queue.get()
+            raise_error = e
+        else:
+            raise_error = None
+        finally:
+            # Stop the processes
+            # The 'STOP's could have been put on the task list before starting the processes, or
+            # you can wait.  In some cases it can be useful to clear out the results_queue (as we
+            # just did and then add on some more tasks.  We don't need that here, but it's
+            # perfectly fine to do.
+            # Once you are done with the processes, putting nproc 'STOP's will stop them all.
+            # This is important, because the program will keep running as long as there are running
+            # processes, even if the main process gets to the end.  So you do want to make sure to
+            # add those 'STOP's at some point!
+            for j in range(nproc):
+                task_queue.put('STOP')
+            for j in range(nproc):
+                p_list[j].join()
+            task_queue.close()
 
-        # Stop the processes
-        # The 'STOP's could have been put on the task list before starting the processes, or you
-        # can wait.  In some cases it can be useful to clear out the results_queue (as we just did)
-        # and then add on some more tasks.  We don't need that here, but it's perfectly fine to do.
-        # Once you are done with the processes, putting nproc 'STOP's will stop them all.
-        # This is important, because the program will keep running as long as there are running
-        # processes, even if the main process gets to the end.  So you do want to make sure to
-        # add those 'STOP's at some point!
-        for j in range(nproc):
-            task_queue.put('STOP')
-        for j in range(nproc):
-            p_list[j].join()
-        task_queue.close()
+            # And clear this out, so we know that we're not multiprocessing anymore.
+            del config['current_nproc']
 
-        # And clear this out, so we know that we're not multiprocessing anymore.
-        del config['current_nproc']
+        if raise_error is not None: # pragma: no branch
+            raise raise_error
 
     else : # nproc == 1
         results = [ None ] * njobs
@@ -913,7 +927,6 @@ def MultiProcess(nproc, config, job_func, tasks, item, logger=None,
                 except KeyboardInterrupt:
                     raise
                 except Exception as e:
-                    import traceback
                     tr = traceback.format_exc()
                     if except_func is not None:
                         except_func(logger, None, k, e, tr)
